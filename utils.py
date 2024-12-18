@@ -113,5 +113,5 @@ async def get_poster(query, bulk=False, id=False, file=None):
             "certificates": list_to_str(movie.get("certificates")),
             "languages": list_to_str(movie.get("languages")),
             "director": list_to_str(movie.get("director")),
-            "writer": list_to_str(movie.get("writer")),
-            }
+            "writer": list_to_str(movie.get("writer")),}
+            
