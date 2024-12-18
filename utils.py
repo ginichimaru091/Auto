@@ -1,26 +1,26 @@
 import logging
 from pyrogram.errors import InputUserDeactivated, UserNotParticipant, FloodWait, UserIsBlocked, PeerIdInvalid
-from info import AUTH_CHANNEL, LONG_IMDB_DESCRIPTION, IS_VERIFY, SETTINGS, START_IMG
+from info import AUTH_CHANNEL, LONG_IMDB_DESCRIPTION, IS_VERIFY , SETTINGS , START_IMG
 from imdb import Cinemagoer
 import asyncio
 from pyrogram.types import Message
 from pyrogram import enums
-import pytz, re, os
+import pytz, re, os 
 from shortzy import Shortzy
 from datetime import datetime
 from typing import Any
 from database.users_chats_db import db
 
-# Set up logging
-logger = logging.getLogger(name)
+
+logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 BANNED = {}
-imdb = Cinemagoer()
-
-class Temp:
+imdb = Cinemagoer() 
+ 
+class temp(object):
     ME = None
-    CURRENT = int(os.environ.get("SKIP", 2))
+    CURRENT=int(os.environ.get("SKIP", 2))
     CANCEL = False
     U_NAME = None
     B_NAME = None
@@ -28,116 +28,115 @@ class Temp:
     SETTINGS = {}
     FILES_ID = {}
     USERS_CANCEL = False
-    GROUPS_CANCEL = False
+    GROUPS_CANCEL = False    
     CHAT = {}
     BANNED_USERS = []
     BANNED_CHATS = []
-
-temp = Temp()
-
 def formate_file_name(file_name):
-    """Formats file name by removing unwanted prefixes."""
-    return ' '.join(
-        filter(
-            lambda x: not x.startswith(('[@', '[www.')),
-            file_name.split()
-        )
-    )
-
+    file_name = ' '.join(filter(lambda x: not x.startswith('[') and not x.startswith('@') and not x.startswith('www.'), file_name.split()))
+    return file_name
 async def is_req_subscribed(bot, query):
-    """Checks if the user is subscribed to a required channel."""
+    if await db.find_join_req(query.from_user.id):
+        return True
     try:
-        if await db.find_join_req(query.from_user.id):
-            return True
-
         user = await bot.get_chat_member(AUTH_CHANNEL, query.from_user.id)
-        if user.status != enums.ChatMemberStatus.BANNED:
-            return True
     except UserNotParticipant:
         pass
     except Exception as e:
-        logger.exception(f"Error in is_req_subscribed: {e}")
+        logger.exception(e)
+    else:
+        if user.status != enums.ChatMemberStatus.BANNED:
+            return True
     return False
 
-def list_to_str(data):
-    """Converts a list to a comma-separated string."""
-    if not data:
-        return "N/A"
-    return ', '.join(map(str, data))
-
 async def get_poster(query, bulk=False, id=False, file=None):
-    """Fetches movie details from IMDb."""
-    try:
-        if not id:
-            query = query.strip().lower()
-            title = query
-            year = re.findall(r'[1-2]\d{3}$', query)
+    if not id:
+        query = (query.strip()).lower()
+        title = query
+        year = re.findall(r'[1-2]\d{3}$', query, re.IGNORECASE)
+        if year:
+            year = list_to_str(year[:1])
+            title = (query.replace(year, "")).strip()
+        elif file is not None:
+            year = re.findall(r'[1-2]\d{3}', file, re.IGNORECASE)
             if year:
-                year = year[0]
-                title = query.replace(year, "").strip()
-            elif file is not None:
-                year = re.findall(r'[1-2]\d{3}', file)
-                year = year[0] if year else None
-
-            movies = imdb.search_movie(title.lower(), results=10)
-            if not movies:
-                return None
-
-            if year:
-                movies = [m for m in movies if str(m.get('year')) == str(year)]
-            movies = [m for m in movies if m.get('kind') in ['movie', 'tv series']]
-
-            if bulk:
-                return movies
-            movie_id = movies[0].movieID
+                year = list_to_str(year[:1]) 
         else:
-            movie_id = query
+            year = None
+        movieid = imdb.search_movie(title.lower(), results=10)
+        if not movieid:
+            return None
+        if year:
+            filtered=list(filter(lambda k: str(k.get('year')) == str(year), movieid))
+            if not filtered:
+                filtered = movieid
+        else:
+            filtered = movieid
+        movieid=list(filter(lambda k: k.get('kind') in ['movie', 'tv series'], filtered))
+        if not movieid:
+            movieid = filtered
+        if bulk:
+            return movieid
+        movieid = movieid[0].movieID
+    else:
+        movieid = query
+    movie = imdb.get_movie(movieid)
+    if movie.get("original air date"):
+        date = movie["original air date"]
+    elif movie.get("year"):
+        date = movie.get("year")
+    else:
+        date = "N/A"
+    plot = ""
+    if not LONG_IMDB_DESCRIPTION:
+        plot = movie.get('plot')
+        if plot and len(plot) > 0:
+            plot = plot[0]
+    else:
+        plot = movie.get('plot outline')
+    if plot and len(plot) > 800:
+        plot = plot[0:800] + "..."
 
-        movie = imdb.get_movie(movie_id)
-        date = movie.get("original air date") or movie.get("year") or "N/A"
-        plot = movie.get('plot outline') if LONG_IMDB_DESCRIPTION else movie.get('plot', [""])[0]
-        plot = (plot[:800] + "...") if plot and len(plot) > 800 else plot
+    return {
+        'title': movie.get('title'),
+        'votes': movie.get('votes'),
+        "aka": list_to_str(movie.get("akas")),
+        "seasons": movie.get("number of seasons"),
+        "box_office": movie.get('box office'),
+        'localized_title': movie.get('localized title'),
+        'kind': movie.get("kind"),
+        "imdb_id": f"tt{movie.get('imdbID')}",
+        "cast": list_to_str(movie.get("cast")),
+        "runtime": list_to_str(movie.get("runtimes")),
+        "countries": list_to_str(movie.get("countries")),
+        "certificates": list_to_str(movie.get("certificates")),
+        "languages": list_to_str(movie.get("languages")),
+        "director": list_to_str(movie.get("director")),
+        "writer":list_to_str(movie.get("writer")),
+        "producer":list_to_str(movie.get("producer")),
+        "composer":list_to_str(movie.get("composer")) ,
+        "cinematographer":list_to_str(movie.get("cinematographer")),
+        "music_team": list_to_str(movie.get("music department")),
+        "distributors": list_to_str(movie.get("distributors")),
+        'release_date': date,
+        'year': movie.get('year'),
+        'genres': list_to_str(movie.get("genres")),
+        'poster': movie.get('full-size cover url' , START_IMG),
+        'plot': plot,
+        'rating': str(movie.get("rating")),
+        'url':f'https://www.imdb.com/title/tt{movieid}'
+    }
 
-        return {
-            'title': movie.get('title'),
-            'votes': movie.get('votes'),
-            "aka": list_to_str(movie.get("akas")),
-            "seasons": movie.get("number of seasons"),
-            "box_office": movie.get('box office'),
-            'localized_title': movie.get('localized title'),
-            'kind': movie.get("kind"),
-            "imdb_id": f"tt{movie_id}",
-            "cast": list_to_str(movie.get("cast")),
-            "runtime": list_to_str(movie.get("runtimes")),
-            "countries": list_to_str(movie.get("countries")),
-            "certificates": list_to_str(movie.get("certificates")),
-            "languages": list_to_str(movie.get("languages")),
-            "director": list_to_str(movie.get("director")),
-            "writer": list_to_str(movie.get("writer")),}
-            "producer":list_to_str(movie.get("producer")),
-            "composer":list_to_str(movie.get("composer")) ,
-            "cinematographer":list_to_str(movie.get("cinematographer")),
-            "music_team": list_to_str(movie.get("music department")),
-            "distributors": list_to_str(movie.get("distributors")),
-            'release_date': date,
-            'year': movie.get('year'),
-            'genres': list_to_str(movie.get("genres")),
-            'poster': movie.get('full-size cover url' , START_IMG),
-            'plot': plot,
-            'rating': str(movie.get("rating")),
-            'url':f'https://www.imdb.com/title/tt{movieid}'
-            }
-
-            async def users_broadcast(user_id, message, is_pin):
-            try:
-          m=await message.copy(chat_id=user_id)
-         if is_pin:
+async def users_broadcast(user_id, message, is_pin):
+    try:
+        m=await message.copy(chat_id=user_id)
+        if is_pin:
             await m.pin(both_sides=True)
         return True, "Success"
-        except FloodWait as e:
+    except FloodWait as e:
         await asyncio.sleep(e.x)
         return await users_broadcast(user_id, message)
-       except InputUserDeactivated:
+    except InputUserDeactivated:
         await db.delete_user(int(user_id))
         logging.info(f"{user_id}-Removed from Database, since deleted account.")
         return False, "Deleted"
@@ -304,3 +303,4 @@ async def save_default_settings(id):
     await db.reset_group_settings(id)
     current = await db.get_settings(id)
     temp.SETTINGS.update({id: current})
+        
