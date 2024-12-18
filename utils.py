@@ -60,7 +60,7 @@ async def get_poster(query, bulk=False, id=False, file=None):
         elif file is not None:
             year = re.findall(r'[1-2]\d{3}', file, re.IGNORECASE)
             if year:
-                year = list_to_str(year[:0]) 
+                year = list_to_str(year[:1]) 
         else:
             year = None
         movieid = imdb.search_movie(title.lower(), results=10)
@@ -303,3 +303,4 @@ async def save_default_settings(id):
     await db.reset_group_settings(id)
     current = await db.get_settings(id)
     temp.SETTINGS.update({id: current})
+             
