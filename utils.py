@@ -303,4 +303,3 @@ async def save_default_settings(id):
     await db.reset_group_settings(id)
     current = await db.get_settings(id)
     temp.SETTINGS.update({id: current})
-             
